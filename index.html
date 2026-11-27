@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>异闻牌局 · 撑到第十天</title>
+<style>
+  :root{
+    --bg:#12100e; --panel:#1c1815; --border:#3a332b;
+    --text:#d8d0c4; --dim:#8a7f70; --accent:#c9a227;
+    --hp:#c0392b; --san:#8e44ad;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:radial-gradient(circle at 50% 0%, #1e1a16 0%, #0d0b09 70%);
+    color:var(--text);
+    font-family:'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif;
+    display:flex;justify-content:center;
+    padding:14px;min-height:100vh;
+  }
+  #app{
+    display:grid;
+    grid-template-columns:210px auto 300px;
+    gap:14px;
+    max-width:1240px;
+    width:100%;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px;
+    box-shadow:0 4px 20px rgba(0,0,0,.5);
+  }
+  h2{font-size:13px;letter-spacing:2px;color:var(--accent);margin-bottom:10px;font-weight:600;
+     border-bottom:1px solid var(--border);padding-bottom:6px;}
+  h3{font-size:12px;letter-spacing:1px;color:var(--dim);margin:14px 0 8px;}
+  /* ---- 状态面板 ---- */
+  .stat{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;align-items:center;}
+  .stat .v{font-weight:bold;font-family:monospace;font-size:13px;}
+  .bar{height:8px;background:#0a0908;border-radius:4px;overflow:hidden;margin-bottom:12px;border:1px solid #2a241e;}
+  .bar>div{height:100%;transition:width .35s;border-radius:4px;}
+  #hpBar{background:linear-gradient(90deg,#7b1d13,#e74c3c);width:100%;}
+  #sanBar{background:linear-gradient(90deg,#4a1d6e,#a569bd);width:100%;}
+  #anomalyBox{margin-top:6px;}
+  .anomaly{
+    background:#2a1414;border:1px solid #6b2020;border-radius:8px;
+    padding:8px;font-size:11px;margin-bottom:6px;
+    animation:pulse 1.8s infinite;
+  }
+  .anomaly .an-name{color:#ff9d6e;font-weight:bold;font-size:12px;display:block;margin-bottom:2px;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(180,40,40,0);}50%{box-shadow:0 0 14px rgba(180,40,40,.45);}}
+  .deckinfo{font-size:11px;color:var(--dim);line-height:1.8;}
+  .deckinfo b{color:var(--text);}
+  /* ---- 棋盘 ---- */
+  #board{
+    display:grid;
+    grid-template-columns:repeat(5,78px);
+    grid-template-rows:repeat(5,78px);
+    gap:6px;
+    background:#141110;
+    padding:10px;
+    border-radius:10px;
+    border:2px solid #2e2822;
+    box-shadow:inset 0 0 40px rgba(0,0,0,.8);
+  }
+  .cell{
+    border-radius:6px;
+    border:1px solid #2a241e;
+    background:#1a1613;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    position:relative;overflow:hidden;
+    cursor:pointer;transition:all .15s;
+    user-select:none;
+  }
+  .cell.inner{background:#221d18;border-color:#3d352c;}
+  .cell.outer{background:#141110;border-style:dashed;border-color:#28221c;}
+  .cell.valid{outline:2px solid #7ec87e;box-shadow:0 0 14px rgba(126,200,126,.5);}
+  .cell.valid:hover{background:#243024;}
+  .cell.card-resource{border-color:#3f7a4a;background:#16211a;}
+  .cell.card-scene{border-color:#6a4a8a;background:#1c1622;}
+  .cell.card-monster.ally{border-color:#3a6ea5;background:#141d28;}
+  .cell.card-monster.enemy{border-color:#a53a3a;background:#281414;animation:enemyglow 2s infinite;}
+  @keyframes enemyglow{0%,100%{box-shadow:0 0 0 rgba(165,58,58,0);}50%{box-shadow:0 0 12px rgba(165,58,58,.55);}}
+  .c-icon{font-size:26px;line-height:1;}
+  .c-name{font-size:9px;margin-top:2px;color:#cfc6b8;letter-spacing:.5px;}
+  .c-hp{font-size:9px;color:#e08a7a;font-family:monospace;}
+  .c-atk{font-size:9px;color:#e0c07a;font-family:monospace;}
+  /* ---- 操作按钮 ---- */
+  #actions{display:flex;gap:10px;margin-top:12px;justify-content:center;}
+  button{
+    background:linear-gradient(180deg,#3a3026,#241d17);
+    color:var(--text);border:1px solid #57493b;
+    padding:9px 20px;border-radius:8px;cursor:pointer;
+    font-size:13px;letter-spacing:1px;font-family:inherit;
+    transition:all .15s;
+  }
+  button:hover:not(:disabled){background:linear-gradient(180deg,#57493b,#3a3026);border-color:var(--accent);color:#ffe9b0;}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button.primary{border-color:var(--accent);color:#ffdf8a;}
+  /* ---- 手牌 ---- */
+  .hand{display:flex;flex-wrap:wrap;gap:7px;min-height:20px;}
+  .hcard{
+    width:88px;height:118px;
+    background:linear-gradient(180deg,#2e2822,#1d1815);
+    border:1px solid #4a4038;border-radius:8px;
+    padding:6px 4px;display:flex;flex-direction:column;align-items:center;
+    cursor:pointer;transition:all .15s;font-size:10px;text-align:center;
+  }
+  .hcard:hover{transform:translateY(-5px);border-color:#a08a6a;}
+  .hcard.selected{border-color:#ffd166;box-shadow:0 0 16px rgba(255,209,102,.6);transform:translateY(-7px);}
+  .hcard .hc-icon{font-size:22px;line-height:1.1;}
+  .hcard .hc-name{font-size:10px;color:#e6ddcf;margin-top:2px;font-weight:600;}
+  .hcard .hc-type{font-size:8px;color:var(--dim);margin-top:1px;}
+  .hcard .hc-cost{font-size:9px;color:#b184d8;margin-top:2px;}
+  .hcard .hc-desc{font-size:8px;color:#8a7f70;margin-top:3px;line-height:1.25;
+                  overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
+  /* ---- 道具 ---- */
+  .items{display:flex;flex-wrap:wrap;gap:6px;min-height:20px;}
+  .item{
+    width:66px;padding:6px 4px;background:#1e2118;border:1px solid #4a5a3a;
+    border-radius:7px;text-align:center;cursor:pointer;transition:all .15s;font-size:9px;
+  }
+  .item:hover{background:#2a3020;border-color:#8fbf6a;transform:translateY(-3px);}
+  .item .it-icon{font-size:19px;}
+  .item .it-name{font-size:9px;color:#cfe0b8;margin-top:2px;}
+  .item .it-dur{font-size:8px;color:#7a9a5a;font-family:monospace;}
+  /* ---- 日志 ---- */
+  #log{
+    height:150px;overflow-y:auto;font-size:10.5px;line-height:1.65;
+    color:#9a8f80;border-top:1px solid var(--border);padding-top:8px;margin-top:6px;
+  }
+  #log div{padding:1px 0;border-bottom:1px solid rgba(255,255,255,.03);}
+  #log::-webkit-scrollbar{width:4px;}
+  #log::-webkit-scrollbar-thumb{background:#3a332b;border-radius:2px;}
+  /* ---- 结束遮罩 ---- */
+  #overlay{
+    position:fixed;inset:0;background:rgba(6,5,4,.92);
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    z-index:99;gap:18px;
+  }
+  #overlay.show{display:flex;}
+  #overlay h1{font-size:34px;letter-spacing:8px;color:var(--accent);}
+  #overlay p{color:#9a8f80;font-size:14px;letter-spacing:2px;}
+  .hint{font-size:10px;color:#6a6055;line-height:1.6;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 左：状态 -->
+  <div class="panel">
+    <h2>状 态</h2>
+    <div class="stat"><span>❤️ 生命</span><span class="v" id="hpVal" style="color:#e74c3c">10 / 10</span></div>
+    <div class="bar"><div id="hpBar"></div></div>
+    <div class="stat"><span>🌀 理智</span><span class="v" id="sanVal" style="color:#b184d8">10 / 10</span></div>
+    <div class="bar"><div id="sanBar"></div></div>
+    <div class="stat"><span>📅 天数</span><span class="v" id="dayVal">1</span></div>
+    <div class="stat"><span>🕐 回合</span><span class="v" id="phaseVal">☀️ 白天</span></div>
+    <div id="anomalyBox"></div>
+    <h3>牌 堆</h3>
+    <div class="deckinfo">
+      抽牌堆 <b id="deckCount">0</b> 张<br>
+      弃牌堆 <b id="discardCount">0</b> 张<br>
+      目标 <b>存活至第 10 天</b>
+    </div>
+    <div class="hint">
+      · 资源卡免费放置，可阻挡伤害<br>
+      · 怪物/场景卡消耗 san 召唤<br>
+      · 每个友方怪物每晚啃食 0.5 san<br>
+      · san 归零后每天生命 -1<br>
+      · san 归零时怪物可能叛变
+    </div>
+  </div>
+
+  <!-- 中：牌桌 -->
+  <div class="panel">
+    <div id="board"></div>
+    <div id="actions">
+      <button id="endTurnBtn" class="primary">结束白天</button>
+      <button id="cancelBtn">取消选择</button>
+    </div>
+  </div>
+
+  <!-- 右：手牌 -->
+  <div class="panel">
+    <h2>手 牌</h2>
+    <div id="hand" class="hand"></div>
+    <h3>道 具</h3>
+    <div id="items" class="items"></div>
+    <h3>日 志</h3>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <h1 id="ovTitle">—</h1>
+  <p id="ovDesc"></p>
+  <button onclick="newGame()">重 新 开 始</button>
+</div>
+
+<script>
+/* ============================================================
+   卡牌定义
+============================================================ */
+const CARDS = {
+  /* ---------- 资源卡 ---------- */
+  wood:    {name:'木材',   type:'resource', icon:'🪵', hp:2, desc:'坚硬的木料，可为你阻挡2点伤害。'},
+  stone:   {name:'石块',   type:'resource', icon:'🪨', hp:3, desc:'沉重的石头，可阻挡3点伤害。'},
+  berry:   {name:'浆果丛', type:'resource', icon:'🫐', hp:1, tag:'berry', desc:'每个白天开始时回复1点生命。'},
+  plastic: {name:'塑料布', type:'resource', icon:'🟦', hp:1, desc:'简陋的遮蔽物，可阻挡1点伤害。'},
+  campfire:{name:'篝火',   type:'resource', icon:'🔥', hp:1, tag:'fire', desc:'夜晚结束时san消耗-1。'},
+  iron:    {name:'铁锭',   type:'resource', icon:'⚙️', hp:2, tag:'iron', desc:'可用于制作的材料。'},
+
+  /* ---------- 道具卡 ---------- */
+  axe:     {name:'斧头',   type:'item', icon:'🪓', dur:3, desc:'对敌方怪物造成2点伤害；若场上有木材，将其转化为铁锭。'},
+  gun:     {name:'手枪',   type:'item', icon:'🔫', dur:2, desc:'对一名敌方怪物造成4点伤害。'},
+  crowbar: {name:'撬棍',   type:'item', icon:'🔧', dur:4, desc:'对敌方怪物造成1点伤害，并抽1张牌。'},
+  medkit:  {name:'医疗包', type:'item', icon:'🧰', dur:1, desc:'回复3点生命。'},
+  ari:     {name:'阿立哌唑片剂', type:'item', icon:'💊', dur:2, desc:'回复4点理智。'},
+
+  /* ---------- 怪物卡 ---------- */
+  imp:     {name:'小妖',   type:'monster', icon:'👺', atk:1, hp:2, sanCost:2, desc:'弱小的仆从，聊胜于无。'},
+  shade:   {name:'幽影',   type:'monster', icon:'👻', atk:2, hp:2, sanCost:3, desc:'不可捉摸的影子。'},
+  hound:   {name:'血犬',   type:'monster', icon:'🐕', atk:3, hp:2, sanCost:3, desc:'嗜血的猎犬，锐利但脆弱。'},
+  gargoyle:{name:'石像鬼', type:'monster', icon:'🗿', atk:2, hp:5, sanCost:4, desc:'坚硬的守卫，血量充沛。'},
+
+  /* ---------- 场景卡 ---------- */
+  cabin:   {name:'木屋',   type:'scene', icon:'🏠', hp:3, sanCost:2, desc:'夜晚结束时，恢复2点理智，木屋耐久-1。'},
+  storage: {name:'储藏室', type:'scene', icon:'📦', hp:3, sanCost:2, desc:'每个白天额外抽取1张牌。'},
+  altar:   {name:'祭坛',   type:'scene', icon:'⛩️', hp:2, sanCost:2, desc:'每个白天开始时理智+1。'},
+
+  /* ---------- 事件卡 ---------- */
+  bloodCup:{name:'血祭圣杯', type:'event', icon:'🍷', desc:'生命-1，恢复50%的理智。'},
+  monHouse:{name:'怪物之家', type:'event', icon:'🏚️', desc:'随机召唤两张怪物卡作为友方单位。'},
+  airdrop: {name:'补给空投', type:'event', icon:'🪂', desc:'抽取2张牌。'},
+  nightmare:{name:'噩梦',   type:'event', icon:'😱', desc:'理智-2。'},
+  scav:    {name:'拾荒者',  type:'event', icon:'🎒', desc:'获得1张随机资源卡。'},
+
+  /* ---------- 异状卡 ---------- */
+  bloodMoon:{name:'血月', type:'anomaly', icon:'🌕', desc:'所有拥有攻击性的事物，一次行动会攻击两次。'},
+  fog:      {name:'迷雾', type:'anomaly', icon:'🌫️', desc:'所有怪物攻击力 -1。'},
+  whisper:  {name:'低语', type:'anomaly', icon:'🌀', desc:'每个回合开始时理智 -1。'},
+};
+
+const DECK_LIST = [
+  'wood','wood','wood','stone','stone','berry','berry','plastic','campfire','iron','iron',
+  'axe','gun','crowbar','medkit','ari',
+  'imp','imp','shade','hound','gargoyle',
+  'cabin','storage','altar',
+  'bloodCup','monHouse','airdrop','nightmare','scav',
+];
+
+const TYPENAME = {
+  resource:'资源', item:'道具', monster:'怪物',
+  scene:'场景', event:'事件', anomaly:'异状'
+};
+
+/* ============================================================
+   工具函数
+============================================================ */
+let uidSeq = 0;
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; };
+const isInner = (r,c) => r>=1&&r<=3&&c>=1&&c<=3;
+
+function makeCard(defId){
+  const d = CARDS[defId];
+  const c = {
+    uid: ++uidSeq,
+    defId,
+    name: d.name,
+    type: d.type,
+    icon: d.icon,
+    desc: d.desc,
+    tag: d.tag || null,
+    side: 'ally',
+  };
+  if (d.hp !== undefined){ c.hp = d.hp; c.maxHp = d.hp; }
+  if (d.dur !== undefined){ c.hp = d.dur; c.maxHp = d.dur; }
+  if (d.atk !== undefined) c.atk = d.atk;
+  if (d.sanCost !== undefined) c.sanCost = d.sanCost;
+  return c;
+}
+
+/* ============================================================
+   游戏状态
+============================================================ */
+let state = null;
+
+function newGame(){
+  state = {
+    hp: 10, maxHp: 10,
+    san: 10, maxSan: 10,
+    day: 1,
+    phase: 'day',           // 'day' | 'night'
+    board: {},              // "r,c" -> card
+    hand: [],
+    items: [],
+    deck: [],
+    discard: [],
+    log: [],
+    anomaly: null,          // 当前异状卡
+    selected: null,         // 手牌中选中的 uid
+    eventQueue: [],
+    resolvingEvents: false,
+    gameOver: false,
+    win: false,
+  };
+
+  state.deck = shuffle(DECK_LIST.map(makeCard));
+
+  document.getElementById('overlay').classList.remove('show');
+  log('🎴 你坐到了牌桌前。');
+  log('🎯 目标：撑过第 10 天。');
+
+  // 起始手牌
+  drawCards(3, true);
+
+  startDay(true);
+  renderAll();
+}
+
+/* ============================================================
+   日志
+============================================================ */
+function log(msg){
+  state.log.unshift(msg);
+  if (state.log.length > 80) state.log.pop();
+}
+
+/* ============================================================
+   抽牌 / 事件处理
+============================================================ */
+function drawCards(n, silent){
+  for (let i=0;i<n;i++){
+    if (state.deck.length === 0){
+      if (state.discard.length === 0){ if(!silent) log('牌堆已空。'); return; }
+      state.deck = shuffle(state.discard);
+      state.discard = [];
+      if(!silent) log('♻️ 弃牌堆洗回抽牌堆。');
+    }
+    const card = state.deck.pop();
+    if (card.type === 'event'){
+      state.eventQueue.push(card);
+    } else if (card.type === 'item'){
+      state.items.push(card);
+      if(!silent) log(`🎒 获得道具：${card.icon} ${card.name}`);
+    } else {
+      state.hand.push(card);
+      if(!silent) log(`🃏 抽到：${card.icon} ${card.name}`);
+    }
+  }
+  processEvents();
+}
+
+function processEvents(){
+  if (state.resolvingEvents) return;
+  state.resolvingEvents = true;
+  while (state.eventQueue.length){
+    const ev = state.eventQueue.shift();
+    resolveEvent(ev);
+  }
+  state.resolvingEvents = false;
+}
+
+function resolveEvent(card){
+  log(`📜 事件【${card.name}】：${card.desc}`);
+  switch(card.defId){
+    case 'bloodCup':
+      state.hp -= 1;
+      state.san = Math.min(state.maxSan, state.san + Math.floor(state.maxSan*0.5));
+      log('  生命 -1，理智大幅恢复。');
+      break;
+    case 'monHouse':
+      for (let i=0;i<2;i++){
+        const id = pick(['imp','shade','hound','gargoyle']);
+        summonAlly(id, true);
+      }
+      break;
+    case 'airdrop':
+      drawCards(2);
+      break;
+    case 'nightmare':
+      state.san -= 2;
+      log('  理智 -2。');
+      break;
+    case 'scav':
+      state.hand.push(makeCard(pick(['wood','stone','berry','plastic','iron'])));
+      log('  获得一张资源卡。');
+      break;
+  }
+  state.discard.push(card);
+}
+
+/* ============================================================
+   放置 / 召唤
+============================================================ */
+function getFreeInnerCells(){
+  const out = [];
+  for (let r=1;r<=3;r++) for (let c=1;c<=3;c++){
+    if (!state.board[`${r},${c}`]) out.push([r,c]);
+  }
+  return out;
+}
+
+function summonAlly(defId, free){
+  const card = makeCard(defId);
+  card.side = 'ally';
+  const cells = getFreeInnerCells();
+  if (!cells.length){ log('⚠️ 牌桌已满，无法召唤。'); return; }
+  const [r,c] = pick(cells);
+  state.board[`${r},${c}`] = card;
+  log(`👺 ${card.name} 被召唤到场上。`);
+  if (!free){ /* 事件召唤不消耗san */ }
+}
+
+function canPlace(card, r, c){
+  const key = `${r},${c}`;
+  if (state.board[key]) return false;
+  const inner = isInner(r,c);
+  if (card.type === 'resource') return inner;
+  if (card.type === 'monster')  return inner && state.san >= card.sanCost;
+  if (card.type === 'scene')    return !inner && state.san >= card.sanCost;
+  return false;
+}
+
+function placeCard(card, r, c){
+  const key = `${r},${c}`;
+  state.board[key] = card;
+  state.hand = state.hand.filter(x => x.uid !== card.uid);
+
+  if (card.sanCost){
+    state.san -= card.sanCost;
+    log(`🌀 消耗 ${card.sanCost} 点理智，放置【${card.name}】。`);
+  } else {
+    log(`📥 放置【${card.name}】。`);
+  }
+  if (card.type === 'monster') card.side = 'ally';
+
+  state.selected = null;
+  renderAll();
+}
+
+/* ============================================================
+   棋盘查询
+============================================================ */
+function boardCards(){ return Object.values(state.board); }
+function getAllyMonsters(){ return boardCards().filter(c => c.type==='monster' && c.side==='ally' && c.hp>0); }
+function getEnemyMonsters(){ return boardCards().filter(c => c.type==='monster' && c.side==='enemy' && c.hp>0); }
+function getBlockers(){ return boardCards().filter(c => c.type==='resource' && c.hp>0); }
+function hasAnomaly(id){ return state.anomaly && state.anomaly.defId === id; }
+
+function cleanupDead(){
+  for (const key of Object.keys(state.board)){
+    const c = state.board[key];
+    if (c.hp !== undefined && c.hp <= 0){
+      log(`💀 ${c.name} 被摧毁了。`);
+      state.discard.push(c);
+      delete state.board[key];
+    }
+  }
+}
+
+/* ============================================================
+   回合流程
+============================================================ */
+function startDay(first){
+  state.phase = 'day';
+  if (state.gameOver) return;
+
+  if (!first) log(`☀️ 第 ${state.day} 天 · 白天`);
+  else log(`☀️ 第 ${state.day} 天 · 白天`);
+
+  // 疯狂侵蚀
+  if (state.san <= 0){
+    state.hp -= 1;
+    log('🌀 疯狂侵蚀着你的身体，生命 -1。');
+  }
+
+  // 场景 & 资源效果
+  let extraDraw = 1;
+  for (const c of boardCards()){
+    if (c.tag === 'berry'){
+      state.hp = Math.min(state.maxHp, state.hp + 1);
+      log('🫐 浆果丛产出浆果，生命 +1。');
+    }
+    if (c.defId === 'altar'){
+      state.san = Math.min(state.maxSan, state.san + 1);
+      log('⛩️ 祭坛低语，理智 +1。');
+    }
+    if (c.defId === 'storage'){
+      extraDraw += 1;
+    }
+  }
+
+  // 异状：低语
+  if (hasAnomaly('whisper')){
+    state.san -= 1;
+    log('🌀 低语萦绕，理智 -1。');
+  }
+
+  // 抽牌
+  drawCards(extraDraw);
+
+  // 旧异状清除 / 新异状判定
+  if (state.anomaly){
+    log(`✨ 异状【${state.anomaly.name}】消散了。`);
+    state.discard.push(state.anomaly);
+    state.anomaly = null;
+  }
+  if (Math.random() < 0.25 && state.day > 1){
+    triggerAnomaly();
+  }
+
+  if (state.hp <= 0) return gameOver(false);
+}
+
+function triggerAnomaly(){
+  const pool = ['bloodMoon','fog','whisper'];
+  const id = pick(pool);
+  const d = CARDS[id];
+  state.anomaly = {
+    uid: ++uidSeq, defId:id, name:d.name, type:'anomaly',
+    icon:d.icon, desc:d.desc,
+  };
+  log(`⚠️ 异状降临【${d.name}】：${d.desc}`);
+}
+
+function onNightStart(){
+  state.phase = 'night';
+  log('🌙 夜幕降临……');
+
+  // 生成敌人
+  const n = Math.min(4, 1 + Math.floor((state.day - 1) / 3));
+  for (let i=0;i<n;i++) spawnEnemy();
+
+  // 夜晚抽牌
+  drawCards(1);
+  renderAll();
+}
+
+function spawnEnemy(){
+  const pool = ['imp','shade','hound'];
+  if (state.day >= 4) pool.push('gargoyle');
+  const id = pick(pool);
+  const card = makeCard(id);
+  card.side = 'enemy';
+  const bonus = Math.floor((state.day - 1) / 3);
+  card.atk += bonus;
+  card.maxHp += bonus * 2;
+  card.hp = card.maxHp;
+
+  const free = getFreeInnerCells();
+  if (!free.length){
+    log(`👹 ${card.name} 在牌桌外徘徊！`);
+    // 直接攻击玩家
+    state.hp -= card.atk;
+    log(`💥 ${card.name} 攻击了你，生命 -${card.atk}`);
+    return;
+  }
+  const [r,c] = pick(free);
+  state.board[`${r},${c}`] = card;
+  log(`👹 ${card.name} 出现在牌桌上（⚔${card.atk} / ❤${card.hp}）`);
+}
+
+function onNightEnd(){
+  log('⚔️ ——— 战斗结算 ———');
+  resolveCombat();
+  if (state.gameOver) return;
+
+  // 叛变判定
+  if (state.san <= 0){
+    for (const m of getAllyMonsters()){
+      if (Math.random() < 0.3){
+        m.side = 'enemy';
+        log(`⚠️ ${m.name} 因你的疯狂而叛变！`);
+      }
+    }
+  }
+
+  // san 消耗
+  const allyCount = getAllyMonsters().length;
+  let sanLoss = 1 + Math.floor(allyCount / 2);
+  if (boardCards().some(c => c.tag === 'fire')){
+    sanLoss = Math.max(0, sanLoss - 1);
+    log('🔥 篝火燃烧，理智消耗减少。');
+  }
+  if (sanLoss > 0){
+    state.san -= sanLoss;
+    log(`🌙 夜晚结束，理智 -${sanLoss}。`);
+  }
+
+  // 木屋效果
+  for (const key of Object.keys(state.board)){
+    const c = state.board[key];
+    if (c.defId === 'cabin' && c.hp > 0){
+      state.san = Math.min(state.maxSan, state.san + 2);
+      c.hp -= 1;
+      log('🏠 木屋提供庇护，理智 +2，木屋耐久 -1。');
+      if (c.hp <= 0){
+        log('🏠 木屋倒塌了。');
+        state.discard.push(c);
+        delete state.board[key];
+      }
+      break;
+    }
+  }
+
+  cleanupDead();
+
+  if (state.hp <= 0) return gameOver(false);
+  if (state.san < 0) state.san = 0;
+
+  // 判定胜利
+  if (state.day >= 10){
+    return gameOver(true);
+  }
+
+  // 进入下一天
+  state.day++;
+  startDay(false);
+  renderAll();
+}
+
+/* ============================================================
+   战斗
+============================================================ */
+function resolveCombat(){
+  // 友方怪物攻击
+  for (const a of getAllyMonsters()){
+    if (a.hp <= 0) continue;
+    const enemies = getEnemyMonsters();
+    if (!enemies.length) break;
+    const t = enemies[0];
+    const times = hasAnomaly('bloodMoon') ? 2 : 1;
+    for (let i=0;i<times;i++){
+      if (t.hp <= 0) break;
+      const dmg = Math.max(1, a.atk - (hasAnomaly('fog') ? 1 : 0));
+      t.hp -= dmg;
+      log(`👺 ${a.name} → ${t.name}，造成 ${dmg} 点伤害。`);
+    }
+  }
+  cleanupDead();
+
+  // 敌方怪物攻击
+  for (const e of getEnemyMonsters()){
+    if (e.hp <= 0) continue;
+    const times = hasAnomaly('bloodMoon') ? 2 : 1;
+    for (let i=0;i<times;i++){
+      enemyAttack(e);
+      if (state.hp <= 0) { gameOver(false); return; }
+    }
+  }
+  cleanupDead();
+}
+
+function enemyAttack(e){
+  const dmg = Math.max(1, e.atk - (hasAnomaly('fog') ? 1 : 0));
+  const candidates = [...getAllyMonsters(), ...getBlockers()];
+  if (candidates.length && Math.random() < 0.65){
+    const t = pick(candidates);
+    t.hp -= dmg;
+    log(`👹 ${e.name} → ${t.name}，造成 ${dmg} 点伤害。`);
+  } else {
+    state.hp -= dmg;
+    log(`💥 ${e.name} 攻击了你，生命 -${dmg}。`);
+  }
+}
+
+/* ============================================================
+   玩家操作
+============================================================ */
+function onCellClick(r, c){
+  if (state.gameOver) return;
+  const sel = state.hand.find(x => x.uid === state.selected);
+  if (!sel) return;
+
+  if (!canPlace(sel, r, c)){
+    if (sel.type === 'scene' && isInner(r,c)) log('场景卡只能放置在牌桌外围。');
+    else if (sel.type !== 'scene' && !isInner(r,c)) log('资源与怪物只能放在牌桌内。');
+    else if (state.san < (sel.sanCost||0)) log('理智不足。');
+    return;
+  }
+  placeCard(sel, r, c);
+}
+
+function selectHandCard(card){
+  if (state.gameOver) return;
+  if (card.type === 'item') return;
+  state.selected = (state.selected === card.uid) ? null : card.uid;
+  renderAll();
+}
+
+function useItem(idx){
+  if (state.gameOver) return;
+  const item = state.items[idx];
+  if (!item) return;
+
+  const enemies = getEnemyMonsters();
+  const target = enemies.length ? enemies.reduce((a,b)=> a.hp<b.hp? a:b) : null;
+
+  switch(item.defId){
+    case 'axe': {
+      if (target){
+        target.hp -= 2;
+        log(`🪓 斧头劈向 ${target.name}，造成 2 点伤害。`);
+      } else {
+        log('🪓 你挥了挥斧头，什么都没砍到。');
+      }
+      // 木材 → 铁锭
+      for (const key of Object.keys(state.board)){
+        const c = state.board[key];
+        if (c.defId === 'wood'){
+          delete state.board[key];
+          state.discard.push(c);
+          state.board[key] = makeCard('iron');
+          log('⚙️ 木材被加工成了铁锭。');
+          break;
+        }
+      }
+      break;
+    }
+    case 'gun':
+      if (target){
+        target.hp -= 4;
+        log(`🔫 枪响，${target.name} 受到 4 点伤害。`);
+      } else log('🔫 你对着空气开了一枪。');
+      break;
+    case 'crowbar':
+      if (target){
+        target.hp -= 1;
+        log(`🔧 撬棍砸向 ${target.name}，造成 1 点伤害。`);
+      }
+      drawCards(1);
+      break;
+    case 'medkit':
+      state.hp = Math.min(state.maxHp, state.hp + 3);
+      log('🧰 医疗包，生命 +3。');
+      break;
+    case 'ari':
+      state.san = Math.min(state.maxSan, state.san + 4);
+      log('💊 阿立哌唑片剂，理智 +4。');
+      break;
+  }
+
+  item.hp -= 1;
+  if (item.hp <= 0){
+    log(`🗑️ ${item.name} 已损坏。`);
+    state.items.splice(idx, 1);
+  }
+
+  cleanupDead();
+  if (state.hp <= 0) gameOver(false);
+  renderAll();
+}
+
+function endTurn(){
+  if (state.gameOver) return;
+  if (state.phase === 'day'){
+    log('🌇 白天结束。');
+    onNightStart();
+  } else {
+    onNightEnd();
+  }
+  renderAll();
+}
+
+function gameOver(win){
+  state.gameOver = true;
+  state.win = win;
+  const ov = document.getElementById('overlay');
+  document.getElementById('ovTitle').textContent = win ? '你 活 下 来 了' : '你 倒 下 了';
+  document.getElementById('ovTitle').style.color = win ? '#c9a227' : '#8b2b2b';
+  document.getElementById('ovDesc').textContent = win
+    ? `你在第 ${state.day} 天迎来了黎明。牌桌上的怪物退去了。`
+    : `你在第 ${state.day} 天的夜晚停止了呼吸。`;
+  ov.classList.add('show');
+  renderAll();
+}
+
+/* ============================================================
+   渲染
+============================================================ */
+function renderAll(){
+  if (!state) return;
+  renderStats();
+  renderBoard();
+  renderHand();
+  renderItems();
+  renderLog();
+  renderButtons();
+}
+
+function renderStats(){
+  const hp = Math.max(0, state.hp);
+  const san = Math.max(0, state.san);
+  document.getElementById('hpVal').textContent = `${hp} / ${state.maxHp}`;
+  document.getElementById('sanVal').textContent = `${san} / ${state.maxSan}`;
+  document.getElementById('hpBar').style.width = Math.max(0, hp/state.maxHp*100) + '%';
+  document.getElementById('sanBar').style.width = Math.max(0, san/state.maxSan*100) + '%';
+  document.getElementById('dayVal').textContent = state.day;
+  document.getElementById('phaseVal').textContent = state.phase === 'day' ? '☀️ 白天' : '🌙 夜晚';
+  document.getElementById('deckCount').textContent = state.deck.length;
+  document.getElementById('discardCount').textContent = state.discard.length;
+
+  const ab = document.getElementById('anomalyBox');
+  ab.innerHTML = '';
+  if (state.anomaly){
+    const d = document.createElement('div');
+    d.className = 'anomaly';
+    d.innerHTML = `<span class="an-name">${state.anomaly.icon} 异状 · ${state.anomaly.name}</span>${state.anomaly.desc}`;
+    ab.appendChild(d);
+  }
+}
+
+function renderBoard(){
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  const sel = state.hand.find(x => x.uid === state.selected);
+
+  for (let r=0;r<5;r++){
+    for (let c=0;c<5;c++){
+      const key = `${r},${c}`;
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + (isInner(r,c) ? 'inner' : 'outer');
+      const card = state.board[key];
+
+      if (card){
+        cell.classList.add('card-' + card.type);
+        if (card.type === 'monster') cell.classList.add(card.side === 'enemy' ? 'enemy' : 'ally');
+        cell.innerHTML = `
+          <div class="c-icon">${card.icon}</div>
+          <div class="c-name">${card.name}</div>
+          ${card.maxHp !== undefined ? `<div class="c-hp">${Math.max(0,card.hp)}/${card.maxHp}</div>` : ''}
+          ${card.atk ? `<div class="c-atk">⚔ ${card.atk}</div>` : ''}
+        `;
+      } else if (sel && canPlace(sel, r, c)){
+        cell.classList.add('valid');
+      }
+      cell.onclick = () => onCellClick(r, c);
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function renderHand(){
+  const el = document.getElementById('hand');
+  el.innerHTML = '';
+  if (!state.hand.length){
+    el.innerHTML = '<div style="font-size:11px;color:#5a5048;">（空）</div>';
+    return;
+  }
+  state.hand.forEach(card => {
+    const d = document.createElement('div');
+    d.className = 'hcard' + (state.selected === card.uid ? ' selected' : '');
+    d.title = card.desc;
+    d.innerHTML = `
+      <div class="hc-icon">${card.icon}</div>
+      <div class="hc-name">${card.name}</div>
+      <div class="hc-type">${TYPENAME[card.type]}</div>
+      ${card.sanCost ? `<div class="hc-cost">🌀 ${card.sanCost}</div>` : ''}
+      <div class="hc-desc">${card.desc}</div>
+    `;
+    d.onclick = () => selectHandCard(card);
+    el.appendChild(d);
+  });
+}
+
+function renderItems(){
+  const el = document.getElementById('items');
+  el.innerHTML = '';
+  if (!state.items.length){
+    el.innerHTML = '<div style="font-size:11px;color:#5a5048;">（空）</div>';
+    return;
+  }
+  state.items.forEach((it, idx) => {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.title = it.desc;
+    d.innerHTML = `
+      <div class="it-icon">${it.icon}</div>
+      <div class="it-name">${it.name}</div>
+      <div class="it-dur">耐久 ${it.hp}/${it.maxHp}</div>
+    `;
+    d.onclick = () => useItem(idx);
+    el.appendChild(d);
+  });
+}
+
+function renderLog(){
+  const el = document.getElementById('log');
+  el.innerHTML = state.log.map(l => `<div>${l}</div>`).join('');
+}
+
+function renderButtons(){
+  const btn = document.getElementById('endTurnBtn');
+  btn.textContent = state.phase === 'day' ? '结束白天' : '结束夜晚';
+  btn.disabled = state.gameOver;
+
+  const cancel = document.getElementById('cancelBtn');
+  cancel.disabled = state.gameOver || !state.selected;
+}
+
+/* ============================================================
+   事件绑定
+============================================================ */
+document.getElementById('endTurnBtn').addEventListener('click', endTurn);
+document.getElementById('cancelBtn').addEventListener('click', () => {
+  state.selected = null;
+  renderAll();
+});
+
+/* ============================================================
+   启动
+============================================================ */
+newGame();
+</script>
+</body>
+</html>
